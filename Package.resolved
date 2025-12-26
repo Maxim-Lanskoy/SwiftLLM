@@ -1,21 +1,21 @@
 {
   "pins" : [
     {
-      "identity" : "llama.cpp",
+      "identity" : "swift-docc-plugin",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ggerganov/llama.cpp/",
+      "location" : "https://github.com/swiftlang/swift-docc-plugin",
       "state" : {
-        "branch" : "master",
-        "revision" : "6afd1a99dc9792096d4567ab9fa1ad530c81c6cd"
+        "revision" : "3e4f133a77e644a5812911a0513aeb7288b07d06",
+        "version" : "1.4.5"
       }
     },
     {
-      "identity" : "swift-power-assert",
+      "identity" : "swift-docc-symbolkit",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kishikawakatsumi/swift-power-assert",
+      "location" : "https://github.com/swiftlang/swift-docc-symbolkit",
       "state" : {
-        "revision" : "2fa10dcbbff807fad73b4e2469b43300a50e9bbc",
-        "version" : "0.12.0"
+        "revision" : "b45d1f2ed151d057b54504d653e0da5552844e34",
+        "version" : "1.0.0"
       }
     },
     {
@@ -23,8 +23,17 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-syntax.git",
       "state" : {
-        "revision" : "64889f0c732f210a935a0ad7cda38f77f876262d",
-        "version" : "509.1.1"
+        "revision" : "fd6373fad9cf3b3bc4e3c06d92f0cfd60007fa8e",
+        "version" : "602.0.0-prerelease-2025-06-26"
+      }
+    },
+    {
+      "identity" : "swift-testing",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-testing.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "e245c544f463f9f1c09f0d801c3c8153cfa76ebc"
       }
     }
   ],

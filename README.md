@@ -8,7 +8,7 @@
 ## Minimal Example
 if you've already bundled your model:
 ```swift
-let bot = LLM(from: Bundle.main.url(forResource: "mistral-7b-instruct-v0.2.Q4_K_M", withExtension: "gguf")!, template: .mistral)
+let bot = LLM(from: Bundle.main.url(forResource: "gemma-3-4b-it-q4_0", withExtension: "gguf")!, template: .gemma)
 let question = bot.preprocess("What's the meaning of life?", [])
 let answer = await bot.getCompletion(from: question)
 print(answer)
@@ -16,14 +16,173 @@ print(answer)
 if you want to initialize with huggingface model:
 ```swift
 let systemPrompt = "You are a sentient AI with emotions."
-let bot = await LLM(from: HuggingFaceModel("TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF", .Q2_K, template: .chatML(systemPrompt)))
+let bot = await LLM(from: HuggingFaceModel("unsloth/Qwen3-0.6B-GGUF", .Q4_K_M, template: .chatML(systemPrompt)))!
 let question = bot.preprocess("What's the meaning of life?", [])
 let answer = await bot.getCompletion(from: question)
 print(answer)
 ```
 
+## Example
+
+<p align="center"><img src="./Screenshot.png" width="480"/></p>
+
+> [!NOTE]  
+> this is a minimal SwiftUI example that i did use for testing. mistral 7B based model is working on iPad Air 5th gen(Q5_K_M) and iPhone 12 mini(Q2_K).  
+> however, generally speaking, for mobile devices, 3B >= parameter models are recommended. check this [benchmark](https://github.com/ggerganov/llama.cpp/discussions/4508) for more details.
+
+### init with a model file that you bundled in your project
+```swift
+import SwiftUI
+import LLM
+
+class Bot: LLM {
+    convenience init() {
+        let url = Bundle.main.url(forResource: "gemma-3-4b-it-q4_0", withExtension: "gguf")!
+        let systemPrompt = "You are a sentient AI with emotions."
+        self.init(from: url, template: .chatML(systemPrompt))!
+    }
+}
+
+struct BotView: View {
+    @ObservedObject var bot: Bot
+    @State var input = "Give me seven national flag emojis people use the most; You must include South Korea."
+    init(_ bot: Bot) { self.bot = bot }
+    func respond() { Task { await bot.respond(to: input) } }
+    func stop() { bot.stop() }
+    var body: some View {
+        VStack(alignment: .leading) {
+            ScrollView {
+                if !bot.thinking.isEmpty {
+                    Text(bot.thinking)
+                        .foregroundStyle(.gray)
+                        .monospaced()
+                        .padding(.bottom, 8)
+                }
+                Text(bot.output).monospaced()
+            }
+            Spacer()
+            HStack {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).foregroundStyle(.thinMaterial).frame(height: 40)
+                    TextField("input", text: $input).padding(8)
+                }
+                Button(action: respond) { Image(systemName: "paperplane.fill") }
+                Button(action: stop) { Image(systemName: "xmark") }
+            }
+        }.frame(maxWidth: .infinity).padding()
+    }
+}
+
+struct ContentView: View {
+    var body: some View {
+        BotView(Bot())
+    }
+}
+```
+
+### init with a `HuggingFaceModel` (gguf) directly from internet
+
+```swift
+class Bot: LLM {
+    convenience init?(_ update: @escaping (Double) -> Void) async {
+        let systemPrompt = "You are a sentient AI with emotions."
+        let model = HuggingFaceModel("unsloth/Qwen3-0.6B-GGUF", .Q4_K_M, template: .chatML(systemPrompt))
+        try? await self.init(from: model) { progress in update(progress) }
+    }
+}
+
+...
+
+struct ContentView: View {
+    @State var bot: Bot? = nil
+    @State var progress: CGFloat = 0
+    func updateProgress(_ progress: Double) {
+        self.progress = CGFloat(progress)
+    }
+    var body: some View {
+        if let bot {
+            BotView(bot)
+        } else {
+            ProgressView(value: progress) {
+                Text("loading huggingface model...")
+            } currentValueLabel: {
+                Text(String(format: "%.2f%%", progress * 100))
+            }
+            .padding()
+            .onAppear() { Task {
+                let bot = await Bot(updateProgress)
+                await MainActor.run { self.bot = bot }
+            } }
+        }
+    }
+}
+```
+
+## Structured Output with @Generatable
+
+The `@Generatable` macro enables **100% reliable** type-safe structured output generation. No more struggling with prompting to get output in the format you want—it works every time and allows true programmatic flow. Simply annotate your Swift structs and enums to automatically generate JSON schemas that guide the model to produce valid, structured responses:
+
+```swift
+@Generatable
+struct Person {
+    let name: String
+    let age: Int
+    let occupation: String
+    let personality: String
+}
+
+let bot = LLM(from: Bundle.main.url(forResource: "model", withExtension: "gguf")!, template: .chatML("You are helpful."))
+let result = try await bot.respond(to: "Create a fictional character", as: Person.self)
+let person = result.value // Guaranteed to be a valid Person struct
+print(person.name) // "Alice"
+print(person.age) // 28
+```
+
+The macro works with structs, enums, arrays, and supports nested Generatable structures:
+
+```swift
+@Generatable
+enum Priority {
+    case low, medium, high, urgent
+}
+
+@Generatable
+struct Address {
+    let street: String
+    let city: String
+    let zipCode: String
+}
+
+@Generatable 
+struct Task {
+    let title: String
+    let priority: Priority
+    let assignee: Person // Nested Generatable struct
+}
+
+@Generatable
+struct Project {
+    let name: String
+    let tasks: [Task] // Arrays of Generatable structs
+    let teamLead: Person // Nested Generatable types
+    let office: Address // Multiple levels of nesting
+}
+
+let result = try await bot.respond(to: "Create a software project plan", as: Project.self)
+```
+
+The macro automatically:
+- Generates JSON schema for structs and enums
+- Adds Codable conformance and CaseIterable for enums
+- Handles nested Generatable structures and arrays
+- Provides automatic validation
+- Returns both the parsed object and raw JSON output
+
+> [!TIP]  
+> Check `LLMTests.swift` for more comprehensive examples and use cases of `@Generatable`.
+
 ## Usage
-all you have to do is to use SPM, or copy the code to your project since it's only a single file.
+Add the package using SPM:
 ```swift
 dependencies: [
     .package(url: "https://github.com/Maxim-Lanskoy/SwiftLLM.git", branch: "linux"),
@@ -31,8 +190,9 @@ dependencies: [
 ```
 
 ## Overview
-`LLM.swift` is basically a lightweight abstraction layer over [`llama.cpp`](https://github.com/ggerganov/llama.cpp) package, so that it stays as performant as possible while is always up to date. so theoretically, any model that works on [`llama.cpp`](https://github.com/ggerganov/llama.cpp) should work with this library as well.  
-It's only a single file library, so you can copy, study and modify the code however you want.
+`LLM.swift` started as a lightweight abstraction layer over [`llama.cpp`](https://github.com/ggerganov/llama.cpp), and has evolved into a comprehensive Swift library with advanced features like `@Generatable` that allows users to control LLMs programmatically. It stays as performant as possible while always being up to date—any model that works on [`llama.cpp`](https://github.com/ggerganov/llama.cpp) should work with this library as well.  
+
+The core implementation is in `LLM.swift`, making it easy to understand and extend the library for your specific needs.
 
 there are some lines that are especially worth paying your attention to to grasp its internal structure:
 
@@ -81,9 +241,10 @@ open func respond(to input: String) async {
 ```
 
 there are three functions users can define when initializing `LLM` class:
-* `var preprocess: (_ input: String, _ history: [Chat]) -> String`
+* `var preprocess: (_ input: String, _ history: [Chat], _ thinking: ThinkingMode) -> String`
 * `var postprocess: (_ output: String) -> Void`
 * `var update: (_ outputDelta: String?) -> Void`
+* `var updateThinking: (_ thinkingDelta: String?) -> Void`
 they are used in `respond` function.
 
 ### preprocess
@@ -100,7 +261,7 @@ USER PROMPT<|im_end|>
 
 to use this chat format, you should use a function that goes like this:
 ```swift
-self.preprocess = { input, history in
+self.preprocess = { input, history, thinking in
     let systemPrompt = "You are a sentient AI with emotions."
     var processed = "<|im_start|>system\n\(systemPrompt)<|im_end|>\n"
     for chat in history {
@@ -108,6 +269,14 @@ self.preprocess = { input, history in
     }
     processed += "<|im_start|>user\n\(input)<|im_end|>\n"
     processed += "<|im_start|>assistant\n"
+    
+    // Handle thinking mode
+    if thinking == .enabled {
+        processed += "<think>"
+    } else if thinking == .none {
+        processed += "<think></think>"
+    }
+    
     return processed
 }
 ```
@@ -144,3 +313,46 @@ if you use regular `func respond(to input: String) async` `update` function that
 `outputDelta` is `nil` when it stops generating the output.
 
 if you want more control over everything you can use `func respond(to input: String, with makeOutputFrom: @escaping (AsyncStream<String>) async -> String) async` instead, which the aforementioned function uses internally, to define your own version of `makeOutputFrom` function that is used to make `String` typed output out of `AsyncStream<String>` and add to its history. in this case, `update` function will be ignored unless you use it. check `func respond(to input: String) async` implementation shown above to understand how it works.
+
+## Thinking Process (Chain of Thought)
+You can access the model's thinking process separately from the final response. This is useful for models which support Chain of Thought.
+
+```swift
+// Enable thinking when calling respond (defaults to .none)
+// If set to .none, it uses the "nothink" technique to suppress thinking tokens
+await bot.respond(to: input, thinking: .enabled)
+
+// Access the accumulated thinking content
+print(bot.thinking)
+```
+The `thinking` property on your bot instance will contain the accumulated thought process, while `output` contains the final response. The library automatically handles the `<think>` tags and separation.
+
+### ThinkingMode
+- `.enabled`: Forces the model to think by appending the thinking start token. Parses and separates thinking content from the response.
+- `.suppressed`: Forces the model to skip thinking by appending empty thinking tokens (nothink technique).
+- `.none`: (Default) No special handling for thinking tokens.
+
+## Embeddings
+
+LLM.swift supports text embeddings for semantic similarity and search applications:
+
+```swift
+// Generate embeddings for text
+let embeddings1 = try await bot.getEmbeddings("Hello world")
+let embeddings2 = try await bot.getEmbeddings("Hi there")
+let embeddings3 = try await bot.getEmbeddings("Goodbye")
+
+// Compare similarity (returns 0.0 to 1.0)
+let similarity = embeddings1.compare(with: embeddings2)
+print(similarity) // 0.8 (high similarity)
+
+// Find most similar embedding
+let mostSimilar = embeddings1.findMostSimilar(in: embeddings2, embeddings3)
+print(mostSimilar == embeddings2) // true
+```
+
+The `Embeddings` struct provides:
+- `compare(with:)` - Computes cosine similarity between two embeddings (0.0 to 1.0)
+- `findMostSimilar(in:)` - Returns the most similar embedding from a set of candidates
+- `Equatable` conformance for direct comparison
+
